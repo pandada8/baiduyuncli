@@ -4,11 +4,12 @@ import json
 import os
 import re
 from sign import GetMethod
+from urllib.parse import quote
 CONFIG_JSON = './.config.json'
 DEFAULT_CONFIG = {
     
 }
-def get_timestamp():
+def getTimestamp():
     return int(time.time() * 100)
 
 class ApiError(Exception):
@@ -34,26 +35,28 @@ class YunApi:
         else:
             self.r.cookies.update(cookie)
     def checkLogin(self):
-        self.logined = self.r.get('https://pan.baidu.com/api/account/thirdinfo',verify=False).json()['errno'] == 0
+        self.logined = self.r.get('https://pan.baidu.com/api/account/thirdinfo').json()['errno'] == 0
         return self.logined
     def getToken(self):
+        if hasattr(self,'token'):
+            return self.token
         if not self.r.cookies.get('BAIDUID'):
-            self.r.get('https://passport.baidu.com/v2/api/?getapi&tpl=netdisk&class=login',verify=False)
-        text = self.r.get('https://passport.baidu.com/v2/api/?getapi&tpl=netdisk&class=login',verify=False).text
-        token = re.search(r'[0-9a-z]{32}',text).group()
-        if not token:
+            self.r.get('https://passport.baidu.com/v2/api/?getapi&tpl=netdisk&class=login')
+        text = self.r.get('https://passport.baidu.com/v2/api/?getapi&tpl=netdisk&class=login').text
+        self.token = re.search(r'[0-9a-z]{32}',text).group()
+        if not self.token:
             raise ApiError
         else:
-            return token
+            return self.token
     def login(self,username,password,input_for_verify = input):
         token = self.getToken()
         # Check if we need a verify code
         url = 'https://passport.baidu.com/v2/api/?logincheck&token={}&tpl=netdisk&username={}'.format(token,quote(username))
-        ret = json.loads(self.r.get(url,verify=False).text[1:-1])
+        ret = json.loads(self.r.get(url).text[1:-1])
         if ret['codestring']:
             url = "https://passport.baidu.com/cgi-bin/genimage?{}".format(ret['codestring'])
             with open('verify.jpg','wb') as fp:
-                fp.write(self.r.get(url,verify=False).content)
+                fp.write(self.r.get(url).content)
             verifyCode = input_for_verify('Verify Code("verify.jpg"):')
         else:
             verifyCode = ""
@@ -71,15 +74,34 @@ class YunApi:
             'password':password,
             'verifycode':verifyCode,
             'mem_pass':'on'
-            },verify=False).text
+            }).text
         url = re.search(r"(?<=encodeURI\(').+?(?='\))", html).group()
         self.r.get(url)
         self.logined = True
-    def fetchSign():
+    def fetchSign(self):
         html = self.r.get('http://pan.baidu.com/disk/home').text
         self._signs = re.findall(r"(?<=yunData\.sign\d\s=\s').+?(?=';)", html)
         self.sign = GetMethod(self._signs[1])(self._signs[2],self._signs[0])
-    def 
+    def getFileList(self,path):
+        ret = []
+        page = 1
+        while True:
+            temp = self._getFileList(path,page)
+            if len(temp) < 100:
+                break
+            page += 1
+            ret.extend(temp)
+        return ret
+    def _getFileList(self,path,page=1):
+        ret = self.r.get('http://pan.baidu.com/api/list?channel=chunlei&clienttype=0&web=1&num=100&order=time&desc=1&app_id=250528&showempty=0',
+            params = {
+                "dir":path,
+                "page":page,
+                "bdstoken":self.getToken()
+            }).json()
+        if ret['errno'] == 0:
+            return ret['list']
 
 
+api = YunApi()
 
