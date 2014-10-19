@@ -21,12 +21,15 @@ def getTimestamp():
 class YunApi:
     def __init__(self):
         self.r = requests.Session()
+        self.r.headers['User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/40.0.2182.3 Safari/537.36'
         self.logined = False
         self.loadConfig()
     def loadConfig(self):
         if os.path.exists(CONFIG_JSON):
             with open(CONFIG_JSON) as fp:
                 self.config = json.load(fp)
+                self.syncCookie(False)
+                self.checkLogin()
         else:
             self.config = DEFAULT_CONFIG
     def storeConfig(self):
@@ -34,12 +37,13 @@ class YunApi:
             json.dump(self.config, fp,indent=4)
     def syncCookie(self,Dump=True):
         if Dump:
-            require = ['BDUSS','BAIDUID']
+            require = ['BDUSS','BAIDUID','BAIDUPSID']
             self.config['cookie'].update({i:j for i,j in self.r.cookies.get_dict().items() if i in require})
         else:
-            self.r.cookies.update(self.config.get(cookie))
+            self.r.cookies.update(self.config.get('cookie'))
     def checkLogin(self):
         self.logined = self.r.get('https://pan.baidu.com/api/account/thirdinfo').json()['errno'] == 0
+        # print(self.r.get('https://pan.baidu.com/api/account/thirdinfo').json())
         return self.logined
     def getToken(self):
         if hasattr(self,'token'):
@@ -84,7 +88,8 @@ class YunApi:
         self.logined = True
     def fetchSign(self):
         html = self.r.get('http://pan.baidu.com/disk/home').text
-        self._signs = re.findall(r"(?<=yunData\.sign\d\s=\s').+?(?=';)", html)
+        self._signs = re.findall(r"(?<=yunData\.sign\d\s=\s[\"']).+?(?=[\"'];)", html)
+        self.bdstoken = re.search(r"(?<=yunData\.MYBDSTOKEN\s=\s[\"']).+?(?=[\"'];)", html).group()
         self.sign = GetMethod(self._signs[1])(self._signs[2],self._signs[0])
     def getFileList(self,path):
         # if self.config.get('cache')
@@ -92,10 +97,10 @@ class YunApi:
         page = 1
         while True:
             temp = self._getFileList(path,page)
+            ret.extend(temp)
             if len(temp) < 100:
                 break
             page += 1
-            ret.extend(temp)
         return ret
     def _getFileList(self,path,page=1):
         ret = self.r.get('http://pan.baidu.com/api/list?channel=chunlei&clienttype=0&web=1&num=100&order=time&desc=1&app_id=250528&showempty=0',
@@ -115,15 +120,17 @@ class YunApi:
         type_ = 'batch' if batch else 'dlink'
         ret = self.r.get('http://pan.baidu.com/api/download?channel=chunlei&clienttype=0&web=1&app_id=250528',params={
             'sign':self.sign,
-            'bdstoken':self.getToken(),
+            'bdstoken':self.bdstoken,
             'type':type_,
             'fidlist':convert(files),
             'timestamp':getTimestamp()
-            }).json()
+            })
+        print(ret.url)
+        ret = ret.json()
         if ret['errno'] == 0:
             return ret['dlink']
         else:
-            raise error.ApiError
+            raise error.ApiError(ret)
 
 api = YunApi()
 

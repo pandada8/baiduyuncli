@@ -40,7 +40,7 @@ def down(command):
 	ids = []
 	for i in command:
 		path,filename = os.path.split(i)
-		ret =[(f['fs_id'],filename) for f in api.getFileList(path) if f['server_filename'] == filename and not f['is_dir']]
+		ret =[(f['fs_id'],filename) for f in api.getFileList(path) if f['server_filename'] == filename and not f['isdir']]
 		if ret:
 			ids.extend(ret)
 		else:

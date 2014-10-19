@@ -23,7 +23,7 @@ def GetMethod(content):
 	else:
 		raise error.NoSuchSignFunc
 
-@register('3427ab806a0d8de49f1576d97b806b18')
+@register('c90ac3b782027c99149c999d74be925f')
 def __sign1(sign3,sign1):
 	a = {}
 	p = {}
@@ -41,10 +41,10 @@ def __sign1(sign3,sign1):
 		u = (u + p[j]) % 256;
 		p[u],p[j] = p[j],p[u]
 		k = p[(p[j] + p[u]) % 256]
-		print(k)
+		# print(k)
 		o.append(ord(sign1[i]) ^ k) # 异或
 
-	return bytes(o)
+	return base64.b64encode(bytes(o)).decode('ascii')
 # @register(simpleMD5('test'))
 # def __test():
 # 	pass
