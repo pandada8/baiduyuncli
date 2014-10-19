@@ -1,11 +1,11 @@
 import base64
 import hashlib
+import error
 
 __all__ = ['GetMethod']
 __MAP__ = {}
 
-class NoSuchSignFunc(Exception):
-	pass
+
 	
 def register(md5):
 	def wrapper(func):
@@ -21,7 +21,7 @@ def GetMethod(content):
 	if md5 in __MAP__:
 		return __MAP__[md5]
 	else:
-		raise NoSuchSignFunc
+		raise error.NoSuchSignFunc
 
 @register('3427ab806a0d8de49f1576d97b806b18')
 def __sign1(sign3,sign1):
