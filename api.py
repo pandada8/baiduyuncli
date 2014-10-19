@@ -7,6 +7,23 @@ from sign import GetMethod
 from urllib.parse import quote
 import error
 import utils
+import logging
+#########################################################################
+# try:
+#     import http.client as http_client
+# except ImportError:
+#     # Python 2
+#     import httplib as http_client
+# http_client.HTTPConnection.debuglevel = 1
+
+# # You must initialize logging, otherwise you'll not see debug output.
+# logging.basicConfig() 
+# logging.getLogger().setLevel(logging.DEBUG)
+# requests_log = logging.getLogger("requests.packages.urllib3")
+# requests_log.setLevel(logging.DEBUG)
+# requests_log.propagate = True
+#########################################################################
+
 CONFIG_JSON = './.config.json'
 DEFAULT_CONFIG = {
     'aria2c_path':'http://localhost:6800/rpc',
@@ -14,6 +31,7 @@ DEFAULT_CONFIG = {
     'cache_request':True,
     'cookie':{}
 }
+
 
 def getTimestamp():
     return int(time.time() * 100)
@@ -44,6 +62,8 @@ class YunApi:
     def checkLogin(self):
         self.logined = self.r.get('https://pan.baidu.com/api/account/thirdinfo').json()['errno'] == 0
         # print(self.r.get('https://pan.baidu.com/api/account/thirdinfo').json())
+        if not hasattr(self, 'sign'):
+            self.fetchYunData()
         return self.logined
     def getToken(self):
         if hasattr(self,'token'):
@@ -86,11 +106,12 @@ class YunApi:
         url = re.search(r"(?<=encodeURI\(').+?(?='\))", html).group()
         self.r.get(url)
         self.logined = True
-    def fetchSign(self):
+    def fetchYunData(self):
         html = self.r.get('http://pan.baidu.com/disk/home').text
         self._signs = re.findall(r"(?<=yunData\.sign\d\s=\s[\"']).+?(?=[\"'];)", html)
         self.bdstoken = re.search(r"(?<=yunData\.MYBDSTOKEN\s=\s[\"']).+?(?=[\"'];)", html).group()
         self.sign = GetMethod(self._signs[1])(self._signs[2],self._signs[0])
+        self.timestamp = re.search(r"(?<=yunData\.timestamp\s=\s['\"])\d+(?=['\"];)", html).group()
     def getFileList(self,path):
         # if self.config.get('cache')
         ret = []
@@ -103,30 +124,27 @@ class YunApi:
             page += 1
         return ret
     def _getFileList(self,path,page=1):
+        if not hasattr(self, 'bdstoken'):
+            self.fetchYunData()
         ret = self.r.get('http://pan.baidu.com/api/list?channel=chunlei&clienttype=0&web=1&num=100&order=time&desc=1&app_id=250528&showempty=0',
             params = {
                 "dir":path,
                 "page":page,
-                "bdstoken":self.getToken()
+                "bdstoken":self.bdstoken
             }).json()
         if ret['errno'] == 0:
             return ret['list']
     def getFilesLink(self,files,batch=False):
         def convert(f):
             return "[{}]".format(",".join(str(i) for i in f))
-
-        if not hasattr(self, 'sign'):
-            self.fetchSign()
         type_ = 'batch' if batch else 'dlink'
         ret = self.r.get('http://pan.baidu.com/api/download?channel=chunlei&clienttype=0&web=1&app_id=250528',params={
             'sign':self.sign,
             'bdstoken':self.bdstoken,
             'type':type_,
             'fidlist':convert(files),
-            'timestamp':getTimestamp()
-            })
-        print(ret.url)
-        ret = ret.json()
+            'timestamp':self.timestamp
+            }).json()
         if ret['errno'] == 0:
             return ret['dlink']
         else:
@@ -139,7 +157,7 @@ class DownloaderBase():
     def pre(self):
         pass
     def download(self,files):
-        # here files should be like [{filename,dlink}]
+        # here files should be like [{filename:,link:}]
         raise NotImplemented
     def showcommand(self):
         pass
@@ -149,9 +167,10 @@ class Aria2RemoteDownloader(DownloaderBase):
         from xmlrpc.client import ServerProxy
         self.s = ServerProxy(api.config.get('aria2c_path')) 
     def download(self,files):
-        for filename,url in files:
-            self.s.aria2c.addUri([url],{'out':filename})
-            print('Add {} Success'.format(utils.shortStr(filename,15)))
+        for i in files:
+            url = api.r.get(i['link'],allow_redirects=False).headers['Location']
+            self.s.aria2.addUri([url],{'out':i['filename']})
+            print('Add {} Success'.format(utils.shortStr(i['filename'],60)))
     def showcommand(self):
         raise NotImplemented
 

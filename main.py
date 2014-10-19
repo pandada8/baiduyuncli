@@ -37,16 +37,21 @@ def down(command):
 		print('You should login first')
 		login('login')
 	command = command[1:]
-	ids = []
+	ids = {}
 	for i in command:
 		path,filename = os.path.split(i)
 		ret =[(f['fs_id'],filename) for f in api.getFileList(path) if f['server_filename'] == filename and not f['isdir']]
 		if ret:
-			ids.extend(ret)
+			ids[ret[0][0]] = {'filename':ret[0][1]}
 		else:
 			print('Get {} info failed'.format(utils.shortStr(i,25)))
-	links = [(ids[i],j) for i,j in  api.getFilesLink(i[0] for i in ids)]
-	downloader.download(links)
+	ret = api.getFilesLink(ids.keys())
+	# print(ids)
+	for i in ret:
+		ids[int(i['fs_id'])]['link'] = i['dlink']
+
+	# print(ids)
+	downloader.download(ids.values())
 
 
 @register('login')
